@@ -15,8 +15,8 @@ class CycleTopo(Topo):
         # build the cycle nodes
         for i in range(n):
             switch = self.addSwitch('s%s' % (i + 1))
-            host1 = self.addHost('h%s' % (2*i + 1), defaultRoute="via %s" %dummy)
-            host2 = self.addHost('h%s' % (2*i + 2), defaultRoute="via %s" %dummy)
+            host1 = self.addHost('h%s' % (2*i + 1), defaultRoute="via %s" % dummy)
+            host2 = self.addHost('h%s' % (2*i + 2), defaultRoute="via %s" % dummy)
             self.addLink(host1, switch)
             self.addLink(host2, switch)
         
@@ -33,5 +33,10 @@ class CycleTopo(Topo):
         # connect it to an arbitrary switch
         self.addLink(dummyHost, switchList[0])
 
+def backwardsFix(n=4):
+    topo = CycleTopo()
+    topo.build(n)
+    return topo
 
-topos = { 'cycletopo': ( lambda x=4: CycleTopo(x) ) }
+
+topos = { 'cycletopo': ( lambda x=4: backwardsFix(x) ) }
