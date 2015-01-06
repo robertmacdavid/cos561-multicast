@@ -19,7 +19,7 @@ pyretic.py pyretic.examples.grouping &
 
 sleep 2
 
-python topo_creator.py --node-count $nodecount
+sudo python topo_creator.py --node-count $nodecount
 
 pkill -f pyretic.py
 

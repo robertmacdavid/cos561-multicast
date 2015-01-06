@@ -4,6 +4,7 @@ from mininet.topo import Topo
 from mininet.net import Mininet
 from mininet.util import dumpNodeConnections
 from mininet.log import setLogLevel
+from mininet.cli import CLI
 
 from argparse import ArgumentParser
 
@@ -19,6 +20,8 @@ args = parser.parse_args()
     
 class SingleSwitchTopo(Topo):
     "Single switch connected to n hosts."
+    def __init__(self, n=4, **opts):
+        self.build(n)
     def build(self, n=2):
         switch = self.addSwitch('s1')
         # Python's range(N) generates 0..N-1
@@ -29,6 +32,8 @@ class SingleSwitchTopo(Topo):
 
 class CycleTopo(Topo):
     "Cycle of switches with two hosts per switch."
+    def __init__(self, n=4, **opts):
+        self.build(n)
     def build(self, n=4):
         # build the cycle nodes
         for i in range(n):
