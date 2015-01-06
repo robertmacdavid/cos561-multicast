@@ -10,9 +10,20 @@ sudo killall controller
 sudo fuser -k 6633/tcp
 sudo mn -c
 
-echo -----------------------------------------
-echo ---------------Cleanup Done--------------
-echo -----------------------------------------
+echo ------------------------------------------
+echo ---------------Cleanup Done---------------
+echo ------------------------------------------
 
-    
+
+pyretic.py pyretic.examples.grouping &
+
+sleep 2
+
 python topo_creator.py --node-count $nodecount
+
+pkill -f pyretic.py
+
+sudo fuser -k 6633/tcp
+
+
+
