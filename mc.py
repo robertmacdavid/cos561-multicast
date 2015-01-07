@@ -21,13 +21,13 @@ protos = {'create':250, 'destroy':251, 'join':252, 'leave':253}
 # check input for some correctness
 def usage():
     print 'Usage: python %s <Action> <GroupIP>' % (sys.argv[0])
-    print 'Actions: create, destroy, join, leave, msg. (create takes no GroupIP)'
+    print 'Actions: create, destroy, join, leave, msg, sniff. (create/sniff takes no GroupIP)'
     sys.exit()
 
 if len(sys.argv) < 2:
     usage()
 
-if sys.argv[1][0] == 'c':
+if sys.argv[1][0] == 'c' or sys.argv[1][0] == 's':
     if len(sys.argv) != 2:
         usage()
 elif len(sys.argv) != 3:
@@ -76,6 +76,11 @@ def join(host, groupID):
     print "Join", groupID, "..."
     resp = contactControl(host, groupID, protos['join'])
     printResponse(resp)
+    #group = resp.dst
+    #if group != "0.0.0.0":
+    #   print "Interpreted response as successful join."
+    #   print "Sniffing group %s. Ctrl+C to stop" % group
+    #   sniff(filter = "host %s" % group, prn=lambda x: x.summary())
 
 # handle a request to leave a group
 def leave(host, groupID):
@@ -83,17 +88,23 @@ def leave(host, groupID):
     resp = contactControl(host, groupID, protos['leave'])
     printResponse(resp)
 
+def sniff(host, groupID = None):
+    print "Sniffing all packets. Ctrl+C to stop."
+    print "NEVERMIND UNIMPLEMENTED BECAUSE SCAPY IS TRASH"
+    #sniff(prn=lambda x: x.summary())
 
 
 
-actions = {'c':create, 'd':destroy, 'j':join, 'l':leave}
+
+
+actions = {'c':create, 'd':destroy, 'j':join, 'l':leave, 's':sniff}
 
 action = sys.argv[1][0]
 
 
 # special handling because create takes no groupID
 group = commIP
-if action != 'c':
+if action != 'c' and action != 's':
     group = sys.argv[2]
 
 
@@ -109,7 +120,10 @@ else:
     
     p = IP(src = host_address, dst = group)/fuzz(UDP())
 
-    responses, unans = sr(p, verbose=0)
+    responses, unans = sr(p, verbose=0, timeout = 1)
+    if len(responses) == 0:
+        print "No responses to list."
+        exit()
     print "--List of responses--"
     #responses.summary()
     for resp in responses:
