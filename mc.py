@@ -48,7 +48,6 @@ def printResponses(resps):
         print "No responses to list."
         exit()
     print "--List of incoming packets--"
-    print resps.summary()
     for resp in resps:
         #print "Source: %s, Dest %s, Protocol %d" %(resp[1].src, resp[1].dst, resp[1].proto)
         summaryMod(resp)
@@ -72,7 +71,7 @@ def contactControl(host, groupID, protocol):
     #    exit()
     #return response
     send(p, verbose = 0)
-    packets = sniff(iface = host_iface, timeout = 1)
+    packets = sniff(filter = "ip", iface = host_iface, timeout = 1)
     printResponses(packets)
     return packets
 ##
@@ -111,7 +110,7 @@ def join(host, groupID):
     if group != failureIP:
         print "Interpreted response as successful join."
         print "---Sniffing %s. Ctrl+C to stop---" % host_iface
-        sniff(iface = host_iface, prn=summaryMod)
+        sniff(filter = "ip", iface = host_iface, prn=summaryMod)
 
 ## handle a request to leave a group
 def leave(host, groupID):
@@ -180,7 +179,7 @@ else:
 
     send(p, verbose=0)
     print "Sniffing for responses for 2 seconds.."
-    responses = sniff(iface = host_iface, timeout = 2)
+    responses = sniff(filter = "ip", iface = host_iface, timeout = 2)
     printResponses(responses)
 
 

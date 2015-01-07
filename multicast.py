@@ -51,7 +51,7 @@ class Home:
 
 
 def multicast_reply(network, pkt, groupID):
-
+   print "Sending response"
    switch = pkt['switch']
    inport = pkt['inport']
    srcip  = pkt['srcip']
