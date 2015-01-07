@@ -39,7 +39,7 @@ elif len(sys.argv) != 3:
 
 # send a packet and return the response
 def contactControl(host, groupID, protocol):
-    p = IP(ttl=3)
+    p = IP()/UDP()
     p.src = host
     p.dst = groupID
     p.proto = protocol
@@ -103,12 +103,20 @@ if action != 'm':
     actions[action](host_address, group)
 # handle data messages in a special way cause the payload and no response
 else:
-    data = raw_input("Type the UDP Payload: ")
-    print "Sending data '%s' to" % data, group
+    #data = raw_input("Type the UDP Payload: ")
+    #print "Sending data '%s' to" % data, group
+    print "Sending a UDP packet to", group
     
-    send( IP(src=host_address, dst=group)/UDP()/(data) )
+    p = IP(src = host_address, dst = group)/fuzz(UDP())
+
+    responses, unans = sr(p, verbose=0)
+    print "--List of responses--"
+    #responses.summary()
+    for resp in responses:
+        print "Source: %s, Dest %s, Protocol %d" %(resp[1].src, resp[1].dst, resp[1].proto)
+    print "---------------------"
                              
-                             
+
 
 
 
