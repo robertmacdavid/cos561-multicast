@@ -5,7 +5,7 @@ from pyretic.lib.std import *
 from pyretic.lib.query import *
 
 
-def multicast_reply(pkt, groupID)
+def multicast_reply(network, pkt, groupID)
 {
     switch = pkt['switch']
     inport = pkt['inport']
