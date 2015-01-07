@@ -49,7 +49,7 @@ def printResponses(resps):
         exit()
     print "--List of incoming packets--"
     print resps.summary()
-    for resp in responses:
+    for resp in resps:
         #print "Source: %s, Dest %s, Protocol %d" %(resp[1].src, resp[1].dst, resp[1].proto)
         summaryMod(resp)
     #print resp.summary()
