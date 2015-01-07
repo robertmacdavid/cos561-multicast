@@ -8,6 +8,7 @@
 # LICENSE file distributed with this work for specific language governing      #
 # permissions and limitations under the License.                               #
 ################################################################################
+import collections
 
 from pyretic.lib.corelib import *
 from pyretic.lib.std import *
@@ -27,6 +28,7 @@ CLOSE_CODE = 251
 MAX_GROUP_NUM = 256
 
 MULTICAST_MASK = IPPrefix('255.0.0.0/8')
+error_address = "0.0.0.0"
 
 NO_OWNER = -1
 
@@ -45,6 +47,43 @@ class Home:
       self.switch = UNKNOWN
       self.mac = UNKNOWN
       self.port = UNKNOWN
+
+
+
+def multicast_reply(network, pkt, groupID):
+
+   switch = pkt['switch']
+   inport = pkt['inport']
+   srcip  = pkt['srcip']
+   srcmac = pkt['srcmac']
+   # dstip  = pkt['dstip']
+   dstmac = pkt['dstmac']
+    
+    
+    
+   rp = Packet()
+   rp = rp.modify(protocol = 17) # 17 is UDP
+   rp = rp.modify(ethtype = 0x0800) # IP type
+   rp = rp.modify(switch=switch)
+    
+   rp = rp.modify(inport=-1)
+   rp = rp.modify(outport=inport)
+    
+   # groupID conveyed through the source IP
+   # src and dst MACs are flipped for a response
+   rp = rp.modify(srcip=groupID)
+   rp = rp.modify(srcmac=dstmac)
+    
+   rp = rp.modify(dstip=srcip)
+   rp = rp.modify(dstmac=srcmac)
+    
+   rp = rp.modify(raw='')
+    
+   network.inject_packet(rp)
+
+
+
+
 
 def make_tree(topo, voi):
    if len(voi) < 2:
@@ -179,6 +218,7 @@ class Multicast(DynamicPolicy):
          for tree in self.group_tree:
             tree.topo_change(network.topology)
          self.update_policy()
+      self.network = network
 
    def update_policy(self):
       self.control_policy = self.learning_policy + self.grouping_policy
@@ -228,15 +268,18 @@ class Multicast(DynamicPolicy):
       if (self.is_free_group(group_id)):
          print "trying to join nonexisting group"
          #todo: send an error packet
+         multicast_reply(self.network, pkt, error_address)
       else:
          if (self.group_owner[group_id] == pkt['srcip']):
             print "trying to join your own group"
             #send error packet
+            multicast_reply(self.network, pkt, error_address)
             return
 
          if (self.is_in_group(group_id = group_id, client = pkt['srcip']) == True):
             print pkt['srcip'], ' trying to reconnect to ', group_id
             #todo: send confirmation packet
+            multicast_reply(self.network, pkt, group_id)
             return
 
          self.group_members[group_id].append(pkt['srcip'])
@@ -244,6 +287,8 @@ class Multicast(DynamicPolicy):
          self.group_tree[group_id].add_voi(pkt['switch'])
          self.update_policy()
          #todo: send confirmation packethhhhhhhhhh
+         multicast_reply(self.network, pkt, group_id)
+
 
    def leave_group(self, pkt):
       print "in leave group"
@@ -251,6 +296,7 @@ class Multicast(DynamicPolicy):
       if (self.is_free_group(group_id)):
          print "trying to leave nonexisting group"
          #todo: send an error packet
+         multicast_reply(self.network, pkt, error_address)
       else:
          if (self.is_in_group(group_id = group_id, client = pkt['srcip']) == True):
             self.group_members[group_id].remove(pkt['srcip'])
@@ -258,9 +304,11 @@ class Multicast(DynamicPolicy):
             self.group_tree[group_id].remove_voi(pkt['switch'])
             self.update_policy()
             #todo: send confirmation packet
+            multicast_reply(self.network, pkt, group_id)
          else:
             print "trying to leave not mine group"
-            #todo: send packet
+            #todo: send error packet
+            multicast_reply(self.network, pkt, error_address)
 
    def create_group(self, pkt):
       print "enter create group"
@@ -272,9 +320,12 @@ class Multicast(DynamicPolicy):
             print "group ", checked_group, " created at switch ", pkt['switch'], " ", pkt['ethtype']
             self.group_tree[checked_group].add_voi(pkt['switch'])
             self.update_policy()
+            #todo: send success packet
+            multicast_reply(self.network, pkt, checked_group)
             return
 
-   #todo: send failure packet
+      #todo: send failure packet
+      multicast_reply(self.network, pkt, error_address)
 
    def close_group(self, pkt):
       print "enter close group"
@@ -282,6 +333,7 @@ class Multicast(DynamicPolicy):
       if (self.group_owner[group_id] != pkt['srcip']):
          print "trying to close others group"
          #todo: send failure packet
+         multicast_reply(self.network, pkt, error_address)
       else:
          self.group_members[group_id] = []
          self.group_owner[group_id] = NO_OWNER
@@ -289,6 +341,7 @@ class Multicast(DynamicPolicy):
          self.group_tree[group_id].clear()
          self.update_policy()
          #todo: send confirm packet
+         multicast_reply(self.network, pkt, group_id)
 
 class Printer(DynamicPolicy):
    def __init__(self):
@@ -298,7 +351,8 @@ class Printer(DynamicPolicy):
       self.policy = Q
 
    def printer(self, pkt):
-      print pkt['switch'], " recieved ", pkt
+       #print pkt['switch'], " recieved ", pkt
+      print "!!", pkt['protocol']
 
 def main():
    our_policy = Multicast() + Printer()

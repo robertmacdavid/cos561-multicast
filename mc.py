@@ -20,6 +20,7 @@ host_address = ni.ifaddresses(host_iface)[2][0]['addr']
 ## GLOBAL VARS HERE ##
 commIP = "255.0.0.0"
 protos = {'create':250, 'destroy':251, 'join':252, 'leave':253}
+protosInverse = {protos[name]:name for name in protos}
 failureIP = "0.0.0.0"
 ######################
 
@@ -42,6 +43,21 @@ elif len(sys.argv) != 3:
 
 
 
+def printResponses(resps):
+    if len(resps) == 0:
+        print "No responses to list."
+        exit()
+    print "--List of incoming packets--"
+    print resps.summary()
+    for resp in responses:
+        #print "Source: %s, Dest %s, Protocol %d" %(resp[1].src, resp[1].dst, resp[1].proto)
+        summaryMod(resp)
+    #print resp.summary()
+    print "----------------------------"
+
+
+
+
 
 ## send a packet and return the response
 def contactControl(host, groupID, protocol):
@@ -50,11 +66,15 @@ def contactControl(host, groupID, protocol):
     p.dst = groupID
     p.proto = protocol
     # p.show()
-    response = sr1(p, timeout = 2, verbose=0)
-    if response == None:
-        print "No response received."
-        exit()
-    return response
+    #response = sr1(p, timeout = 2, verbose=0)
+    #if response == None:
+    #    print "No response received."
+    #    exit()
+    #return response
+    send(p, verbose = 0)
+    packets = sniff(iface = host_iface, timeout = 1)
+    printResponses(packets)
+    return packets
 ##
 
 
@@ -71,41 +91,53 @@ def printResponse(resp):
 ## handle a request to create a group
 def create(host, groupID = commIP):
     print "Create a group..."
-    resp = contactControl(host, groupID, protos['create'])
-    printResponse(resp)
+    resps = contactControl(host, groupID, protos['create'])
 ##
 
 ## handle a request to destroy a group
 def destroy(host, groupID):
     print "Destroy", groupID, "..."
-    resp = contactControl(host, groupID, protos['destroy'])
-    printResponse(resp)
+    resps = contactControl(host, groupID, protos['destroy'])
 ##
 
 ## handle a request to join a group
 def join(host, groupID):
     print "Join", groupID, "..."
-    resp = contactControl(host, groupID, protos['join'])
-    printResponse(resp)
-    group = resp.dst
+    resps = contactControl(host, groupID, protos['join'])
+    group = failureIP
+    for resp in resps:
+        if resp.dst[:3] == "255":
+            group = resp.dst
     if group != failureIP:
         print "Interpreted response as successful join."
         print "---Sniffing %s. Ctrl+C to stop---" % host_iface
-        sniff(iface = host_iface, prn=lambda x: x.summary())
+        sniff(iface = host_iface, prn=summaryMod)
 
 ## handle a request to leave a group
 def leave(host, groupID):
     print "Leave", groupID, "..."
-    resp = contactControl(host, groupID, protos['leave'])
-    printResponse(resp)
+    resps = contactControl(host, groupID, protos['leave'])
 ##
 
 def sniffy(host, groupID = None):
     print "---Sniffing %s. Ctrl+C to stop---" % host_iface
-    sniff(iface = host_iface, prn=lambda x:x.summary())
+    sniff(iface = host_iface, prn=summaryMod)
 ##
 
-#########           ###########
+
+def summaryMod(pkt):
+    print pkt.summary(),
+    if pkt.type != 2048:
+        print ''
+        return
+    proto = pkt.proto
+    if proto in protosInverse:
+        print "((%s))" % protosInverse[proto].upper()
+    else:
+        print ''
+
+
+#############################
 
 
 
@@ -120,6 +152,12 @@ action = sys.argv[1][0]
 group = commIP
 if action != 'c' and action != 's':
     group = sys.argv[2]
+
+# if the given address is short, it must be the group number
+# convert it to an IP
+if len(group) < 4:
+    group = commIP[:8] + group
+
 ##
 
 
@@ -131,8 +169,10 @@ if action != 'm':
 ## Messages to the group are handled differently
 else:
     # lets you type the payload so you can recognize it in a packet dump
-    data = raw_input("Type the UDP Payload: ")
-    print "Sending UDP data '%s' to" % data, group
+    #data = raw_input("Type the UDP Payload: ")
+    #print "Sending UDP data '%s' to" % data, group
+    print "Sending UDP packet to", group
+    data = ' '
     
     ## fuzzing the UDP packet fixes some crap with unset header fields
     ## it shouldnt be necessary because SCAPY IS SUPPOSED TO FIX THEM ON SEND
@@ -141,15 +181,8 @@ else:
     send(p, verbose=0)
     print "Sniffing for responses for 2 seconds.."
     responses = sniff(iface = host_iface, timeout = 2)
-    if len(responses) == 0:
-        print "No responses to list."
-        exit()
-    print "--List of incoming packets--"
-    for resp in responses:
-        #print "Source: %s, Dest %s, Protocol %d" %(resp[1].src, resp[1].dst, resp[1].proto)
-        print resp.summary()
-    print "----------------------------"
-                             
+    printResponses(responses)
+
 
 
 
