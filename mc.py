@@ -110,27 +110,6 @@ else:
                              
                              
 
-"""
-
-"skipping actions"
-
-req = IP(ttl=3)
-req.src = sys.argv[2]
-req.dst = sys.argv[3]
-req.proto = 250
-resp = sr1(req, timeout = 3, verbose = 0)
-if resp == None:
-    print "No response."
-    exit()
-
-if resp.proto == 1:
-    print "Got an icmp response"
-else:
-    print "Got non-icmp response"
-
-print "Response source: ", resp.src
-"""
-
 
 
 
