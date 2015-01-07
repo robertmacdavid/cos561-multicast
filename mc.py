@@ -12,7 +12,8 @@ from netifaces import AF_INET, AF_INET6, AF_LINK, AF_PACKET, AF_BRIDGE
 import netifaces as ni
 ifaces = ni.interfaces()
 ifaces = [iface for iface in ifaces if iface != "lo"]
-host_address = ni.ifaddresses(ifaces[0])[2][0]['addr']
+host_iface = ifaces[0]
+host_address = ni.ifaddresses(host_iface)[2][0]['addr']
 
 commIP = "255.0.0.0"
 protos = {'create':250, 'destroy':251, 'join':252, 'leave':253}
@@ -76,11 +77,11 @@ def join(host, groupID):
     print "Join", groupID, "..."
     resp = contactControl(host, groupID, protos['join'])
     printResponse(resp)
-    #group = resp.dst
-    #if group != "0.0.0.0":
-    #   print "Interpreted response as successful join."
-    #   print "Sniffing group %s. Ctrl+C to stop" % group
-    #   sniff(filter = "host %s" % group, prn=lambda x: x.summary())
+    group = resp.dst
+    if group != "0.0.0.0":
+        print "Interpreted response as successful join."
+        print "---Sniffing %s. Ctrl+C to stop---" % host_iface
+        sniff(iface = host_iface, prn=lambda x: x.summary())
 
 # handle a request to leave a group
 def leave(host, groupID):
@@ -88,16 +89,15 @@ def leave(host, groupID):
     resp = contactControl(host, groupID, protos['leave'])
     printResponse(resp)
 
-def sniff(host, groupID = None):
-    print "Sniffing all packets. Ctrl+C to stop."
-    print "NEVERMIND UNIMPLEMENTED BECAUSE SCAPY IS TRASH"
-    #sniff(prn=lambda x: x.summary())
+def sniffy(host, groupID = None):
+    print "---Sniffing %s. Ctrl+C to stop---" % host_iface
+    sniff(iface = host_iface, prn=lambda x:x.summary())
 
 
 
 
 
-actions = {'c':create, 'd':destroy, 'j':join, 'l':leave, 's':sniff}
+actions = {'c':create, 'd':destroy, 'j':join, 'l':leave, 's':sniffy}
 
 action = sys.argv[1][0]
 
@@ -110,7 +110,8 @@ if action != 'c' and action != 's':
 
 # run the desired action
 if action != 'm':
-    print "Sending request to",
+    if action != 's':
+        print "Sending request to",
     actions[action](host_address, group)
 # handle data messages in a special way cause the payload and no response
 else:
