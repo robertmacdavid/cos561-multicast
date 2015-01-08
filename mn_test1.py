@@ -7,6 +7,7 @@ from mininet.cli import CLI
 from mininet.node import Controller, RemoteController
 
 import math
+import random
 
 dummy = "10.0.0.255"
 
@@ -121,10 +122,10 @@ def simpleTest():
     #                 net = Mininet(topo=topo,...)
     # this causes wild issues. it must be like mininet(topo())
     # ======================== Topologies ======================
-    #topo = CycleTopo(n=3)
-    #topo = TreeTopo(n=3,d=2)
+    #topo = CycleTopo(n=30)
+    topo = TreeTopo(n=5,d=2)
     #topo = CompleteGraphTopo(n=4)
-    topo = HyperCubeTopo(n=4)
+    #topo = HyperCubeTopo(n=3)
     net = Mininet(topo=topo,
                   controller=RemoteController('c0', ip='127.0.0.1', port=6633))
 
@@ -140,9 +141,24 @@ def simpleTest():
     for i in range(len(net.switches)):
       s.append(net.switches[i])
 
-    #net.stop()
-    #return
-    #print s[0].cmd('wireshark &')                       # start wireshark on switch 1, cause host 1 will be group owner
+    # crazy test
+    for i in range(255):
+      rand = random.randint(0,30)
+      print h[rand].cmd('python mc.py create')
+      for j in range(1):
+        rand2 = random.randint(1,30)
+        #print h[rand2].cmd('python mc.py join 255.0.0.%d' %(i+1))
+    for i in range(255):
+      print h[0].cmd('python mc.py msg 255.0.0.%d' %(i+1))        # h1 sends message to the group
+      
+    CLI(net) 
+    net.stop()
+    return
+
+    '''
+    '''
+
+    print s[0].cmd('wireshark &')                       # start wireshark on switch 1, cause host 1 will be group owner
     print s[0].cmd('sleep 10')                          # during this time, go to the wireshark and select every link on switch and start monitoring
     print h[0].cmd('python mc.py create')               # h1 create group
     print h[1].cmd('python mc.py join 255.0.0.1')       # h2 join group 0 (or groupID that is created)
@@ -151,7 +167,11 @@ def simpleTest():
     print h[1].cmd('python mc.py leave 255.0.0.1')      # h2 leave the group
     print h[0].cmd('python mc.py msg 255.0.0.1')        # h1 sends message to the group
     print h[0].cmd('python mc.py destroy 255.0.0.1')    # h1 close the group
+    print h[0].cmd('python mc.py msg 255.0.0.1')        # h1 sends message to the group
     
+    CLI(net) 
+    net.stop()
+    return
     # now, exhaustive test, procedure
     # one host creates group, all other hosts join
     # then host send msg, timeout, all others leave
