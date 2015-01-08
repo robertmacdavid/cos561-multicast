@@ -18,54 +18,150 @@ from multiprocessing import Lock
 from pyretic.modules.mac_learner import mac_learner
 import os
 
-JOIN_REQUEST = 5566
-LEAVE_REQUEST = 6655
+CREATE_CODE = 250
+JOIN_CODE = 251
+LEAVE_CODE = 252
+CLOSE_CODE = 253
 
+MAX_GROUP_NUM = 255
+
+MULTICAST_MASK = IPPrefix('255.0.0.0/8')
+
+NO_OWNER = -1
+
+#dont' know if this wokrs
+def send_packet(network, switch, outport, srcip, dstip, dstport):
+   rp = Packet()
+   rp = rp.modify(switch = switch)
+   rp = rp.modify(outport = outport)
+   rp = rp.modify(srcip = srcip)
+   rp = rp.modify(dstip = dstip)
+   rp = rp.modify(dstport = dstport)
+   rp = rp.modify(raw='')
+
+   netwrok.inject_packet(rp)
+
+#group id is always incoded in dest ip
+def get_group_id(pkt):
+   return int(pkt['dstip'].__repr__().split('.')[3])
+
+
+UNKNOWN = -1
+class Home:
+   def __init__(self):
+      self.switch = UNKNOWN
+      self.mac = UNKNOWN
 
 class grouping(DynamicPolicy):
    def __init__(self):
-      self.last_topology = None
+      super(grouping, self).__init__()
+      #copied, don't know if we need this line
       self.lock = Lock()
 
-      self.group = defaultdict(list)
-      join_query = packets(-1, group_by=['srcip'])
+      #keeps trak of taken group IDs
+      self.group_owner = [NO_OWNER for i in range(MAX_GROUP_NUM)]
+      self.group_members = [[]] * MAX_GROUP_NUM
+      #pointer used to chose next free group
+      self.curr_group = 0
+
+      #stores all home switches of the given host IP
+      self.host_home_switch = defaultdict(Home)
+
+      #packets() sends all the packets to the controller
+      leave_query = packets()
+      join_query = packets()
+      create_query = packets()
+      close_query = packets()
+
+      #register callback determines what happens at the controller
       join_query.register_callback(self.join_group)
+      #protocol determines which query it is
+      self.policy = (match(protocol=JOIN_CODE)) >> join_query
 
-      leave_query = packets(-1, group_by=['srcip'])
       leave_query.register_callback(self.leave_group)
-      self._policy = (match(dstport=JOIN_REQUEST) >> join_query) + (match(dstport=LEAVE_REQUEST) >> leave_query)
+      self.policy = self.policy + (match(protocol=LEAVE_CODE) >> leave_query)
 
-   def set_network(self, network):
-      with self.lock:
-         print '---Edges'
-         print '\n'.join(['s%s[%s]---s%s[%s]\ttype=%s' % (s1,data[s1],s2,data[s2],data['type']) for (s1,s2,data) in network.topology.edges(data=True)])
-         print network.topology
-         print '---Has changed:'
+      create_query.register_callback(self.create_group)
+      self.policy = self.policy + (match(protocol=CREATE_CODE) >> create_query)
 
-         if self.last_topology:
-             print self.last_topology != network.topology
-         else:
-             print True
-         self.last_topology = network.topology
-         print network.topology.number_of_nodes()
-   def is_in_group(self, owner, client):
-     if (owner == client or client in self.group[owner]):
-       return True
-     else:
-       return False
+      close_query.register_callback(self.close_group)
+      self.policy = self.policy + (match(protocol=CLOSE_CODE) >> close_query)
+
+      #need this for later tree construction
+      home_learner = packets()
+      home_learner.register_callback(self.learn_home_ip)
+      self.policy = self.policy + home_learner
+
+   def learn_home_ip(self, pkt):
+      if (self.host_home_switch[pkt['srcip']].switch != pkt['switch'] or self.host_home_switch[pkt['srcip']].mac != pkt['srcmac']):
+         self.host_home_switch[pkt['srcip']].switch = pkt['switch']
+         self.host_home_switch[pkt['srcip']].mac= pkt['srcmac']
+         print "new home of ", pkt['srcip'], ", it's switch ", pkt['switch'], " mac ", pkt['srcmac']
+
+   def is_free_group(self, group_id):
+      return self.group_owner[group_id] == NO_OWNER
+
+   def is_in_group(self, group_id, client):
+      return (client in self.group_members[group_id])
 
    def join_group(self,pkt):
-     if (self.is_in_group(owner = pkt['dstip'], client = pkt['srcip']) == False):
-        self.group[pkt['dstip']].append(pkt['srcip'])
-        print pkt['srcip'], ' connected to ', pkt['dstip']
+      print "in join group"
+      group_id = get_group_id(pkt)
+      if (self.is_free_group(group_id)):
+         print "trying to join nonexisting group"
+         #todo: send an error packet
+      else:
+         if (self.is_in_group(group_id = group_id, client = pkt['srcip']) == False):
+            self.group_members[group_id].append(pkt['srcip'])
+            print pkt['srcip'], ' connected to ', group_id
+            #todo: change policy
+            #todo: send confirmation packet
+         else:
+            print pkt['srcip'], ' trying to reconnect to ', group_id
+            #todo: send confirmation packet
 
    def leave_group(self, pkt):
-     if (self.is_in_group(owner = pkt['dstip'], client = pkt['srcip']) == True):
-       self.group[pkt['dstip']].remove(pkt['srcip'])
-       print pkt['srcip'], ' left ', pkt['dstip']
+      print "in leave group"
+      group_id = get_group_id(pkt)
+      if (self.is_free_group(group_id)):
+         print "trying to leave nonexisting group"
+         #todo: send an error packet
+      else:
+         if (self.is_in_group(group_id = group_id, client = pkt['srcip']) == True):
+            self.group_members[group_id].remove(pkt['srcip'])
+            print pkt['srcip'], ' left ', group_id
+            #todo: change policy
+            #todo: send confirmation packet
+         else:
+            print "trying to leave not mine group"
+            #todo: send packet
 
+   def create_group(self, pkt):
+      print "enter create group"
+
+      for i in range(MAX_GROUP_NUM):
+         checked_group = self.curr_group + i
+         if self.is_free_group(checked_group):
+            self.group_owner[checked_group] = pkt['srcip']
+            print "group ", checked_group, " created at switch ", pkt['switch'], " ", pkt['ethtype']
+            #todo: send confirmation packet
+            return
+   #todo: send failure packet
+
+   def close_group(self, pkt):
+      print "enter close group"
+      group_id = get_group_id(pkt)
+      if (self.group_owner[group_id] != pkt['srcip']):
+         print "trying to close others group"
+         #todo: send failure packet
+      else:
+         self.group_members[group_id] = []
+         self.group_owner[group_id] = NO_OWNER
+         print "group ", group_id, " closed"
+         #todo: change policy
+         #todo: send confirm packet
 def main():
 
-   return grouping() + mac_learner()
+   return if_(match(dstip=MULTICAST_MASK) , grouping(), mac_learner())
 
 
