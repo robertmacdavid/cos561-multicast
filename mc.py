@@ -55,8 +55,14 @@ def printResponses(resps):
     print "----------------------------"
 
 
-
-
+def printControlResponse(pkt, protocol):
+    group = pkt[IP].src
+    if group[:3] == "255":
+        print protosInverse[protocol].upper(), "GROUP",group,"SUCCESS"
+    else:
+        print protosInverse[protocol].upper(), "GROUP",group,"MAY HAVE FAILED"
+        print "First packet received after sending request:"
+        print pkt.summary()
 
 ## send a packet and return the response
 def contactControl(host, groupID, protocol):
@@ -71,8 +77,13 @@ def contactControl(host, groupID, protocol):
     #    exit()
     #return response
     send(p, verbose = 0)
-    packets = sniff(filter = "ip", iface = host_iface, timeout = 1)
-    printResponses(packets)
+    timeout = 2
+    packets = sniff(filter = "ip", iface = host_iface, timeout = timeout, count=1)
+    if len(packets) != 0:
+        printControlResponse(packets[0], protocol)
+    else:
+        print "No response received in", timeout, "seconds."
+    
     return packets
 ##
 
