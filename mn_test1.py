@@ -62,6 +62,56 @@ class TreeTopo(Topo):
       self.addLink(dummyHost, switchList[0])
 
 
+class CompleteGraphTopo(Topo):
+    "A complete graph of n nodes"
+    def build(self, n=4):
+      for i in range(n):
+        switch = self.addSwitch('s%s' %(i+1))
+        host = self.addHost('h%s' %(i+1), defaultRoute="via %s" %dummy)
+        self.addLink(switch, host)
+
+      # connect the cycle
+      switchList = self.switches(sort=True)
+      
+      for i in range(len(switchList)):
+        for j in range(i+1,len(switchList)):
+          print "linking %d and %d" %(i+1,j+1)
+          self.addLink(switchList[i], switchList[j])
+      
+      # hack to make hosts send unknown packets through their switches
+      # this dummy host will be everyone's default gateway
+      dummyHost = self.addHost('hd', ip=dummy)
+      # connect it to an arbitrary switch
+      self.addLink(dummyHost, switchList[0])
+
+
+class HyperCubeTopo(Topo):
+    "A hypercube of n dimension"
+    def build(self, n=4):
+      num = int(math.pow(2,n))
+      for i in range(num):
+        switch = self.addSwitch('s%s' %(i+1))
+        host = self.addHost('h%s' %(i+1), defaultRoute="via %s" %dummy)
+        self.addLink(switch, host)
+
+      # connect the cycle
+      switchList = self.switches(sort=True)
+      
+      for i in range(len(switchList)):
+        for j in range(n+1):
+          if j > 0:
+            slot = int(math.pow(2,j))
+            for k in range(i,i+slot):
+              if i/slot == k/slot and k == i + slot/2:
+                print "linking %d and %d" %(i+1,k+1)
+                self.addLink(switchList[i], switchList[k])
+            
+      # hack to make hosts send unknown packets through their switches
+      # this dummy host will be everyone's default gateway
+      dummyHost = self.addHost('hd', ip=dummy)
+      # connect it to an arbitrary switch
+      self.addLink(dummyHost, switchList[0])
+
 
 def simpleTest():
     "Create and test a simple network"
@@ -70,8 +120,11 @@ def simpleTest():
     # you cannot do   topo = CycleTopo()
     #                 net = Mininet(topo=topo,...)
     # this causes wild issues. it must be like mininet(topo())
+    # ======================== Topologies ======================
     #topo = CycleTopo(n=3)
-    topo = TreeTopo(n=3,d=2)
+    #topo = TreeTopo(n=3,d=2)
+    #topo = CompleteGraphTopo(n=4)
+    topo = HyperCubeTopo(n=4)
     net = Mininet(topo=topo,
                   controller=RemoteController('c0', ip='127.0.0.1', port=6633))
 
@@ -89,7 +142,7 @@ def simpleTest():
 
     #net.stop()
     #return
-    print s[0].cmd('wireshark &')                       # start wireshark on switch 1, cause host 1 will be group owner
+    #print s[0].cmd('wireshark &')                       # start wireshark on switch 1, cause host 1 will be group owner
     print s[0].cmd('sleep 10')                          # during this time, go to the wireshark and select every link on switch and start monitoring
     print h[0].cmd('python mc.py create')               # h1 create group
     print h[1].cmd('python mc.py join 255.0.0.1')       # h2 join group 0 (or groupID that is created)
