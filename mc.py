@@ -163,14 +163,14 @@ if len(group) < 4:
 ## Run the desired action's function
 if action != 'm':
     if action != 's':
-        print host_address, " sending request to",
+        print "Sending request to",
     actions[action](host_address, group)
 ## Messages to the group are handled differently
 else:
     # lets you type the payload so you can recognize it in a packet dump
     #data = raw_input("Type the UDP Payload: ")
     #print "Sending UDP data '%s' to" % data, group
-    print host_address, " sending UDP packet to", group
+    print "Sending UDP packet to", group
     data = ' '
     
     ## fuzzing the UDP packet fixes some crap with unset header fields

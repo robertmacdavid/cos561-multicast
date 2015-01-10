@@ -51,7 +51,7 @@ class Home:
 
 
 def multicast_reply(network, pkt, groupID):
-   print "Sending response"
+
    switch = pkt['switch']
    inport = pkt['inport']
    srcip  = pkt['srcip']
@@ -311,9 +311,7 @@ class Multicast(DynamicPolicy):
             multicast_reply(self.network, pkt, error_address)
 
    def create_group(self, pkt):
-      print "\n//==================================//"
       print "enter create group"
-      print "//==================================//\n"
 
       for i in range(1, MAX_GROUP_NUM):
          checked_group = self.curr_group + i
