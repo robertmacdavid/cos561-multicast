@@ -59,8 +59,6 @@ def multicast_reply(network, pkt, groupID):
    # dstip  = pkt['dstip']
    dstmac = pkt['dstmac']
 
-
-
    rp = Packet()
    rp = rp.modify(protocol = 17) # 17 is UDP
    rp = rp.modify(ethtype = 0x0800) # IP type
@@ -96,10 +94,6 @@ def make_tree(topo, voi):
    return self
 
 class MulticastTree():
-   """
-   Policy that floods packets on a minimum spanning tree, recalculated
-   every time the network is updated (set_network).
-   """
    def __init__(self, tree_constructor = make_tree):
       self.voi = []
       self.voi_user_count = defaultdict(int)
@@ -111,7 +105,7 @@ class MulticastTree():
    def update_tree(self):
       print self.voi
       if self.topo != None:
-	 updated_tree = self.tree_constructor(self.topo, self.voi)
+         updated_tree = self.tree_constructor(self.topo, self.voi)
          if updated_tree != self.tree:
             self.tree = updated_tree
          if (not self.is_none()):
@@ -156,25 +150,57 @@ class MulticastTree():
             #                      for switch,attrs in self.tree.nodes(data=True)]])
 
    def topo_change(self, topology):
-      print topology 
+ #     print "topo changed"
+#      print topology 
       self.topo = topology
       self.update_tree()
 
+group_owner = [NO_OWNER for i in range(MAX_GROUP_NUM)]
+group_members = [[]] * MAX_GROUP_NUM
+group_tree = [MulticastTree() for i in range(MAX_GROUP_NUM)]
+host_home = defaultdict(Home)
+
+def is_free_group(group_id):
+    return group_owner[group_id] == NO_OWNER
+
+def is_in_group(group_id, client):
+    return (client in group_members[group_id])
+
+
+
+class MulticastGroup(DynamicPolicy):
+    def __init__(self, my_id):
+        super(MulticastGroup, self).__init__()
+        self.my_id = my_id
+        self.policy = drop
+	self.topo = None
+    def update_policy(self):
+        #print "Updating rules for ", self.my_id
+        tree = group_tree[self.my_id]
+        if not is_free_group(self.my_id):
+            local_policy = drop
+            for host_ip in group_members[self.my_id]:
+                  switch = host_home[host_ip].switch
+                  mac = host_home[host_ip].mac
+                  port = host_home[host_ip].port
+                  print "setting up ", switch, " to forward ", group_ip(self.my_id), " to ", port, " with ", mac
+                  local_policy = local_policy + (match(switch=switch) >> modify(dstmac=mac) >> modify(dstip=host_ip) >> fwd(port))
+
+            global_policy = drop
+            if not tree.is_none():
+               global_policy = tree.get_tree_policy()
+            self.policy = match(dstip=group_ip(self.my_id)) >> (global_policy + local_policy)
+   
+    def set_network(self, network):
+       self.topo = network.topology
+       group_tree[self.my_id].topo_change(self.topo)
+       self.update_policy() 
+
 class Multicast(DynamicPolicy):
-   def __init__(self):
+    def __init__(self, multicast_group_list):
       super(Multicast, self).__init__()
       self.lock = Lock()
-
-      #keeps trak of taken group IDs
-      self.group_owner = [NO_OWNER for i in range(MAX_GROUP_NUM)]
-      self.group_members = [[]] * MAX_GROUP_NUM
-      #trees used to set routing policies
-      self.group_tree = [MulticastTree() for i in range(MAX_GROUP_NUM)]
-      #pointer used to chose next free group
-      self.curr_group = 0
-
-      #stores all home switches of the given host IP
-      self.host_home = defaultdict(Home)
+      self.groups = multicast_group_list
 
       #################################################
       #set up policies for group requests             #
@@ -213,98 +239,63 @@ class Multicast(DynamicPolicy):
       self.control_policy = self.learning_policy + self.grouping_policy
       self.control_filter = match(protocol=CLOSE_CODE) | match(protocol=CREATE_CODE) | match(protocol=LEAVE_CODE) | match(protocol=JOIN_CODE)
       self.policy = self.control_filter >> self.control_policy
-
-   def set_network(self, network):
-      print network
-      if not network is none:
-         for tree in self.group_tree:
-            tree.topo_change(network.topology)
-         self.update_policy()
-      self.network = network
-
-   def update_policy(self):
-      self.control_policy = self.learning_policy + self.grouping_policy
-      self.routing_policy = drop
-      for i in range(1, MAX_GROUP_NUM):
-         tree = self.group_tree[i]
-         if not self.is_free_group(i):
-            local_policy = drop
-            for host_ip in self.group_members[i]:
-                  switch = self.host_home[host_ip].switch
-                  mac = self.host_home[host_ip].mac
-                  port = self.host_home[host_ip].port
-                  print "setting up ", switch, " to forward it to ", port, " with ", mac
-                  local_policy = local_policy + (match(switch=switch) >> modify(dstmac=mac) >> modify(dstip=host_ip) >> fwd(port))
-
-            global_policy = drop
-            if not tree.is_none():
-               global_policy = tree.get_tree_policy()
-            self.routing_policy = self.routing_policy + (match(dstip=group_ip(i)) >> (global_policy + local_policy))
-            #self.routing_policy = self.routing_policy + tree.get_tree_policy()
-
-            print "installing rules for ip ", group_ip(i)
+      self.network = None
+    
+    def set_network(self, network):
+      if not network is None:
+         if (network != self.network):
+             self.network = network
 
 
-
-
-      self.policy = if_(self.control_filter, self.control_policy, self.routing_policy)
-
-
-
-   def learn_home_ip(self, pkt):
-      if (self.host_home[pkt['srcip']].switch != pkt['switch'] or self.host_home[pkt['srcip']].mac != pkt['srcmac']):
-         self.host_home[pkt['srcip']].switch = pkt['switch']
-         self.host_home[pkt['srcip']].mac = pkt['srcmac']
-         self.host_home[pkt['srcip']].port = pkt['inport']
+    def learn_home_ip(self, pkt):
+      if (host_home[pkt['srcip']].switch != pkt['switch'] or host_home[pkt['srcip']].mac != pkt['srcmac']):
+         host_home[pkt['srcip']].switch = pkt['switch']
+         host_home[pkt['srcip']].mac = pkt['srcmac']
+         host_home[pkt['srcip']].port = pkt['inport']
          print "new home of ", pkt['srcip'], ", it's switch ", pkt['switch'], " mac ", pkt['srcmac']
 
-   def is_free_group(self, group_id):
-      return self.group_owner[group_id] == NO_OWNER
-
-   def is_in_group(self, group_id, client):
-      return (client in self.group_members[group_id])
-
-   def join_group(self,pkt):
+    def join_group(self,pkt):
       print "in join group"
       group_id = get_group_id(pkt)
-      if (self.is_free_group(group_id)):
+      self.learn_home_ip(pkt)
+      if (is_free_group(group_id)):
          print "trying to join nonexisting group"
          #todo: send an error packet
          multicast_reply(self.network, pkt, error_address)
       else:
-         if (self.group_owner[group_id] == pkt['srcip']):
+         if (group_owner[group_id] == pkt['srcip']):
             print "trying to join your own group"
             #send error packet
             multicast_reply(self.network, pkt, error_address)
             return
 
-         if (self.is_in_group(group_id = group_id, client = pkt['srcip']) == True):
+         if (is_in_group(group_id = group_id, client = pkt['srcip']) == True):
             print pkt['srcip'], ' trying to reconnect to ', group_id
             #todo: send confirmation packet
             multicast_reply(self.network, pkt, group_id)
             return
 
-         self.group_members[group_id].append(pkt['srcip'])
+         group_members[group_id].append(pkt['srcip'])
          print pkt['srcip'], ' connected to ', group_id
-         self.group_tree[group_id].add_voi(pkt['switch'])
-         self.update_policy()
+         group_tree[group_id].add_voi(pkt['switch'])
+         self.groups[group_id].update_policy()
          #todo: send confirmation packethhhhhhhhhh
          multicast_reply(self.network, pkt, group_id)
 
 
-   def leave_group(self, pkt):
+    def leave_group(self, pkt):
       print "in leave group"
       group_id = get_group_id(pkt)
-      if (self.is_free_group(group_id)):
+      if (is_free_group(group_id)):
          print "trying to leave nonexisting group"
          #todo: send an error packet
          multicast_reply(self.network, pkt, error_address)
       else:
-         if (self.is_in_group(group_id = group_id, client = pkt['srcip']) == True):
-            self.group_members[group_id].remove(pkt['srcip'])
+         if (is_in_group(group_id = group_id, client = pkt['srcip']) == True):
+            group_members[group_id].remove(pkt['srcip'])
             print pkt['srcip'], ' left ', group_id
-            self.group_tree[group_id].remove_voi(pkt['switch'])
-            self.update_policy()
+            group_tree[group_id].remove_voi(pkt['switch'])
+            self.groups[group_id].update_policy()
             #todo: send confirmation packet
             multicast_reply(self.network, pkt, group_id)
          else:
@@ -312,52 +303,53 @@ class Multicast(DynamicPolicy):
             #todo: send error packet
             multicast_reply(self.network, pkt, error_address)
 
-   def create_group(self, pkt):
-      print "enter create group"
+    def create_group(self, pkt):
+        with self.lock:
+          print "enter create group"
 
-      for i in range(1, MAX_GROUP_NUM):
-         checked_group = self.curr_group + i
-         if self.is_free_group(checked_group):
-            self.group_owner[checked_group] = pkt['srcip']
-            print "group ", checked_group, " created at switch ", pkt['switch'], " ", pkt['ethtype']
-            self.group_tree[checked_group].add_voi(pkt['switch'])
-            self.update_policy()
-            #todo: send success packet
-            multicast_reply(self.network, pkt, checked_group)
-            return
+          for i in range(1, MAX_GROUP_NUM):
+             checked_group = i
+             if is_free_group(checked_group):
+                group_owner[checked_group] = pkt['srcip']
+                print "group ", checked_group, " created at switch ", pkt['switch'], " ", pkt['ethtype']
+                group_tree[checked_group].add_voi(pkt['switch'])
+                self.groups[checked_group].update_policy()
+                multicast_reply(self.network, pkt, checked_group)
+                return
 
-      #todo: send failure packet
-      multicast_reply(self.network, pkt, error_address)
+          #todo: send failure packet
+          multicast_reply(self.network, pkt, error_address)
 
-   def close_group(self, pkt):
+    def close_group(self, pkt):
       print "enter close group"
       group_id = get_group_id(pkt)
-      if (self.group_owner[group_id] != pkt['srcip']):
+      if (group_owner[group_id] != pkt['srcip']):
          print "trying to close others group"
          #todo: send failure packet
          multicast_reply(self.network, pkt, error_address)
       else:
-         self.group_members[group_id] = []
-         self.group_owner[group_id] = NO_OWNER
+         group_members[group_id] = []
+         group_owner[group_id] = NO_OWNER
          print "group ", group_id, " closed"
-         self.group_tree[group_id].clear()
-         self.update_policy()
+         group_tree[group_id].clear()
+         self.groups[group_id].update_policy()
          #todo: send confirm packet
          multicast_reply(self.network, pkt, group_id)
 
 class Printer(DynamicPolicy):
-   def __init__(self):
+    def __init__(self):
       super(Printer, self).__init__()
       Q = packets()
       Q.register_callback(self.printer)
       self.policy = Q
 
-   def printer(self, pkt):
+    def printer(self, pkt):
        #print pkt['switch'], " recieved ", pkt
       print "!!", pkt['protocol']
 
 def main():
-   our_policy = Multicast() + Printer()
-   return if_(match(dstip=MULTICAST_MASK) , our_policy, mac_learner())
+    groups = [MulticastGroup(i) for i in range(MAX_GROUP_NUM)]
+    our_policy = Multicast(groups) + parallel(groups)
+    return if_(match(dstip=MULTICAST_MASK) , our_policy, mac_learner())
 
 
