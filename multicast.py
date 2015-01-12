@@ -111,7 +111,7 @@ class MulticastTree():
    def update_tree(self):
       print self.voi
       if self.topo != None:
-         updated_tree = self.tree_constructor(self.topo, self.voi)
+	 updated_tree = self.tree_constructor(self.topo, self.voi)
          if updated_tree != self.tree:
             self.tree = updated_tree
          if (not self.is_none()):
@@ -156,6 +156,7 @@ class MulticastTree():
             #                      for switch,attrs in self.tree.nodes(data=True)]])
 
    def topo_change(self, topology):
+      print topology 
       self.topo = topology
       self.update_tree()
 
@@ -214,7 +215,8 @@ class Multicast(DynamicPolicy):
       self.policy = self.control_filter >> self.control_policy
 
    def set_network(self, network):
-      if not network is None:
+      print network
+      if not network is none:
          for tree in self.group_tree:
             tree.topo_change(network.topology)
          self.update_policy()
