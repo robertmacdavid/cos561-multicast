@@ -8,6 +8,7 @@ from mininet.node import Controller, RemoteController
 
 import math
 import random
+import time
 
 dummy = "10.0.0.255"
 
@@ -18,7 +19,7 @@ class CycleTopo(Topo):
         for i in range(n):
             switch = self.addSwitch('s%s' % (i + 1))
             host1 = self.addHost('h%s' % (2*i + 1), defaultRoute="via %s" %dummy)
-            host2 = self.addHost('h%s' % (2*i + 2), defaultRoute="via %s" %dummy)
+            host2 = self.addHost('h%s' % (2*i + 2), defaultRoute="via 10.0.0.%d" %(2*i+1))
             self.addLink(host1, switch)
             self.addLink(host2, switch)
         
@@ -122,9 +123,9 @@ def simpleTest():
     #                 net = Mininet(topo=topo,...)
     # this causes wild issues. it must be like mininet(topo())
     # ======================== Topologies ======================
-    #topo = CycleTopo(n=30)
-    topo = TreeTopo(n=5,d=2)
-    #topo = CompleteGraphTopo(n=4)
+    topo = CycleTopo(n=30)
+    #topo = TreeTopo(n=5,d=2)
+    #topo = CompleteGraphTopo(n=10)
     #topo = HyperCubeTopo(n=3)
     net = Mininet(topo=topo,
                   controller=RemoteController('c0', ip='127.0.0.1', port=6633))
@@ -141,12 +142,16 @@ def simpleTest():
     for i in range(len(net.switches)):
       s.append(net.switches[i])
 
+    n = 30
+    n /= 2
     # crazy test
     for i in range(255):
-      rand = random.randint(0,30)
-      print h[rand].cmd('python mc.py create')
+      rand = random.randint(1,n)
+      print h[2*rand - 1].cmd('python mc.py create')
+      #time.sleep(5)
+      #print h[0].cmd('sleep 1')
       for j in range(1):
-        rand2 = random.randint(1,30)
+        rand2 = random.randint(1,n)
         #print h[rand2].cmd('python mc.py join 255.0.0.%d' %(i+1))
     for i in range(255):
       print h[0].cmd('python mc.py msg 255.0.0.%d' %(i+1))        # h1 sends message to the group
